@@ -1,2 +1,10 @@
-# m2usenet-go
-mail2usenet go version, hashtoken generation 24/28/32 bit and ed25519 mandatory post signing
+Mail2Usenet Gateway è un'interfaccia web che consente agli utenti di inviare messaggi a gruppi Usenet tramite email. Utilizza meccanismi di Proof-of-Work (PoW) per prevenire lo spam e firme digitali Ed25519 per garantire l'autenticità dei messaggi.​
+
+Requisiti
+Sistema operativo: Debian/Ubuntu o compatibile
+
+Apache: Versione 2.4 o superiore
+
+PHP: Versione 7.4 o superiore
+
+Certificati SSL: Forniti da Let's Encrypt​
