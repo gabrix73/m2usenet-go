@@ -250,6 +250,10 @@ func main() {
 		log.Fatalf("Header X-Hashcash mancante")
 	}
 
+	// Log degli header Ed25519 per debugging
+	log.Printf("X-Ed25519-Pub header: %s", header.Get("X-Ed25519-Pub"))
+	log.Printf("X-Ed25519-Sig header: %s", header.Get("X-Ed25519-Sig"))
+
 	bodyBuf := new(bytes.Buffer)
 	_, err = io.Copy(bodyBuf, msg.Body)
 	if err != nil {
@@ -305,6 +309,15 @@ func main() {
 		"Content-Transfer-Encoding: 7bit",
 		"User-Agent: m2usenet-go v0.1.0",
 	}
+
+	// Aggiunta degli header Ed25519 se presenti
+	if ed25519pub := header.Get("X-Ed25519-Pub"); ed25519pub != "" {
+		headers = append(headers, fmt.Sprintf("X-Ed25519-Pub: %s", ed25519pub))
+	}
+	if ed25519sig := header.Get("X-Ed25519-Sig"); ed25519sig != "" {
+		headers = append(headers, fmt.Sprintf("X-Ed25519-Sig: %s", ed25519sig))
+	}
+
 	if ref := header.Get("References"); ref != "" {
 		headers = append(headers, fmt.Sprintf("References: %s", ref))
 	}
