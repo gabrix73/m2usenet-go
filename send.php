@@ -1,113 +1,115 @@
 <?php
 // /var/www/mail2usenet/send.php
-// Send the post via the "mail2news" transport, enforcing Ed25519 signature.
+// Hands the post to Postfix transport “mail2news”, enforcing Ed25519 signature.
 
-// Read POST data
-$from        = $_POST['from']         ?? '';
-$newsgroups  = $_POST['newsgroups']   ?? '';
-$subject     = $_POST['subject']      ?? '';
-$references  = $_POST['references']   ?? '';
-$hashcash    = $_POST['xhashcash']    ?? '';
-$pubkey      = $_POST['x-ed25519-pub'] ?? '';
-$sig         = $_POST['x-ed25519-sig'] ?? '';
-$message     = $_POST['message']      ?? '';
+$required = [
+    'from', 'newsgroups', 'subject', 'xhashcash', 'x-ed25519-sig', 'message'
+];
 
-// Validate required fields
-if (!$from || !$newsgroups || !$subject || !$hashcash || !$sig || !$message) {
-    http_response_code(400);
-    echo "Missing required fields. Signature is mandatory.";
-    exit;
+// Collect POST values
+$data = [];
+foreach ($_POST as $k => $v) $data[$k] = trim($v);
+
+// Check required fields
+$missing = array_filter($required, fn($f) => empty($data[$f] ?? ''));
+if ($missing) {
+    showError(
+        'Missing required fields: ' . implode(', ', $missing) .
+        '. Remember: you must click <em>Sign&nbsp;Message</em> on the Digital Signature tab before sending.'
+    );
 }
 
-// Limit to 3 newsgroups
-$groups = array_filter(array_map('trim', explode(',', $newsgroups)));
-if (count($groups) > 3) {
-    $groups = array_slice($groups, 0, 3);
-}
-$newsgroups = implode(', ', $groups);
+// Limit newsgroups to 3
+$groups = array_slice(
+    array_filter(array_map('trim', explode(',', $data['newsgroups']))),
+    0, 3
+);
+$data['newsgroups'] = implode(', ', $groups);
 
-// Build raw email with dummy To for sendmail -t
-$headers   = [];
-$headers[] = "From: $from";
-$headers[] = "To: mail2news@localhost";
-$headers[] = "Newsgroups: $newsgroups";
-$headers[] = "Subject: $subject";
-if ($references) {
-    $headers[] = "References: $references";
+// Build raw email
+$hdr = [];
+$hdr[] = 'From: ' . $data['from'];
+$hdr[] = 'To: mail2news@localhost';                 // dummy for sendmail -t
+$hdr[] = 'Newsgroups: ' . $data['newsgroups'];
+$hdr[] = 'Subject: ' . $data['subject'];
+if (!empty($data['references'])) $hdr[] = 'References: ' . $data['references'];
+$hdr[] = 'X-Hashcash: ' . $data['xhashcash'];
+$hdr[] = 'X-Ed25519-Sig: ' . $data['x-ed25519-sig'];
+if (!empty($data['x-ed25519-pub'])) {
+    $hdr[] = 'X-Ed25519-Pub: ' . $data['x-ed25519-pub'];
 }
-// PoW header
-$headers[] = "X-Hashcash: $hashcash";
-// Enforce signature immediately after PoW
-$headers[] = "X-Ed25519-Sig: $sig";
-// Optionally include public key header
-if ($pubkey) {
-    $headers[] = "X-Ed25519-Pub: $pubkey";
-}
-$headers[] = "X-No-Archive: Yes";
-$headers[] = "Mime-Version: 1.0";
-$headers[] = "Content-Type: text/plain; charset=UTF-8";
-$headers[] = "Content-Transfer-Encoding: 7bit";
-$headers[] = "";  // end of headers
+$hdr[] = 'X-No-Archive: Yes';
+$hdr[] = 'Mime-Version: 1.0';
+$hdr[] = 'Content-Type: text/plain; charset=UTF-8';
+$hdr[] = 'Content-Transfer-Encoding: 7bit';
+$hdr[] = '';                                      // blank line before body
 
-$rawEmail = implode("\r\n", $headers) . "\r\n" . $message . "\r\n";
+$raw = implode("\r\n", $hdr) . "\r\n" . $data['message'] . "\r\n";
 
-// Send via sendmail using mail2news transport
+// Send via sendmail using the custom transport
 $sendmail = '/usr/sbin/sendmail';
 $cmd = escapeshellcmd($sendmail) . ' -i -oTransport=mail2news -t';
 
 $descriptors = [
-    0 => ['pipe', 'r'],  // stdin
-    1 => ['pipe', 'w'],  // stdout
-    2 => ['pipe', 'w'],  // stderr
+    0 => ['pipe', 'r'],
+    1 => ['pipe', 'w'],
+    2 => ['pipe', 'w'],
 ];
 
-$process = proc_open($cmd, $descriptors, $pipes);
-if (!is_resource($process)) {
-    http_response_code(500);
-    echo "Failed to invoke sendmail.";
-    exit;
-}
+$proc = proc_open($cmd, $descriptors, $pipes);
+if (!is_resource($proc)) showError('Failed to invoke sendmail.');
 
-// Write the raw email
-fwrite($pipes[0], $rawEmail);
+fwrite($pipes[0], $raw);
 fclose($pipes[0]);
 
-// Capture and close outputs
 $stderr = stream_get_contents($pipes[2]);
 fclose($pipes[1]);
 fclose($pipes[2]);
 
-$returnCode = proc_close($process);
-if ($returnCode !== 0) {
-    http_response_code(500);
-    echo "Sendmail error (code {$returnCode}):\n" . nl2br(htmlspecialchars($stderr));
-    exit;
+$code = proc_close($proc);
+if ($code !== 0) {
+    showError('Sendmail error (code ' . $code . '):<br>' . nl2br(htmlspecialchars($stderr)));
 }
 
-// Success page
+// ------------------ success page ------------------
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Message Sent</title>
+  <title>Post Sent</title>
   <style>
-    body { font-family: sans-serif; text-align: center; padding: 50px; }
-    a.button {
-      display: inline-block;
-      margin-top: 20px;
-      padding: 10px 20px;
-      background: #4caf50;
-      color: white;
-      text-decoration: none;
-      border-radius: 4px;
-    }
-    a.button:hover { background: #45a049; }
+    body { font-family:sans-serif; text-align:center; padding:50px; }
+    a.button { display:inline-block; margin-top:20px; padding:10px 20px;
+               background:#4caf50; color:#fff; border-radius:4px; text-decoration:none; }
+    a.button:hover { background:#45a049; }
   </style>
 </head>
 <body>
   <h1>Message Sent Successfully</h1>
-  <p>Your post has been handed off to the mail2news transport.</p>
+  <p>Your article was handed off to <code>mail2news</code> and should appear in the newsgroups soon.</p>
   <a class="button" href="https://m2usenet.virebent.art">Return to Home</a>
 </body>
 </html>
+
+<?php
+// -------- helper --------
+function showError(string $msg): void {
+    http_response_code(400);
+    ?>
+    <!DOCTYPE html>
+    <html lang="en"><head>
+      <meta charset="UTF-8"><title>Error</title>
+      <style>
+        body { font-family:sans-serif; text-align:center; padding:50px; color:#d00; }
+        a { color:#337ab7; }
+      </style>
+    </head><body>
+      <h1>Submission Error</h1>
+      <p><?= $msg ?></p>
+      <p><a href="https://m2usenet.virebent.art">Return to Home</a></p>
+    </body></html>
+    <?php
+    exit;
+}
+?>
