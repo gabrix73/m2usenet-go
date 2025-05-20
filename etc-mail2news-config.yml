@@ -1,0 +1,35 @@
+paths:
+  log: "/var/log/mail2news/mail2news.log"
+  etc: "/etc/mail2news"
+  lib: "/var/lib/mail2news"
+  history: "/var/lib/mail2news/history"
+
+nntp:
+  path_header: "mail2news.tcpreset.net!not-for-mail"
+  injection_host: "mail2news.tcpreset.net" 
+  contact: "abuse@tcpreset.net"
+  messageid: "mail2news.tcpreset.net"
+  default_from: "anonymous@mail2news.tcpreset.net"
+  # Configurazione per server NNTP primario (onion) e fallback
+  primary_onion: "peannyjkqwqfynd24p6dszvtchkq7hfkwymi5by5y332wmosy5dwfaqd.onion:119"
+  fallback_server: "news.tcpreset.net:119"
+  # Configurazione Tor
+  tor_proxy: "127.0.0.1:9050"
+  always_use_tor: true  # Usa sempre Tor anche per server non .onion
+
+thresholds:
+  max_bytes: 100000
+  max_crossposts: 10
+  hours_past: 48
+  hours_future: 6
+  socket_timeout: 30
+
+logging:
+  level: "info"
+  format: "%(asctime)s %(levelname)-8s %(message)s"
+  datefmt: "%Y-%m-%d %H:%M:%S"
+  retain: 7
+
+encoding:
+  force_utf8: true
+  fallback_charset: iso-8859-1
