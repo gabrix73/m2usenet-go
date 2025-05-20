@@ -1,0 +1,1 @@
+mail2news: "|/usr/local/bin/mail2news-wrapper.sh"
