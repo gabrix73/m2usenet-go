@@ -1,18 +1,21 @@
 # m2usenet v1.0.0
 
-**Privacy-focused Usenet posting gateway with automatic fallback support**
+**Privacy-focused Usenet posting system with authentication preprocessing**
 
-m2usenet is a secure, privacy-oriented gateway system that allows posting to Usenet newsgroups via mail2news gateways. The system combines web interface posting with email client support, featuring automatic fallback between .onion and clearnet gateways.
+m2usenet is a secure, privacy-oriented web interface for posting to Usenet newsgroups. The system preprocesses messages with cryptographic authentication (Hashcash + Ed25519) before forwarding them to external mail2news gateways, featuring automatic fallback between .onion and clearnet gateways.
 
 ## 🏗️ Architecture
 
 ```
-📱 Web Interface Mode:
-┌─────────────┐    ┌─────────────--┐    ┌─────────────┐    ┌─────────────┐
-│ Frontend    │────│ Local Mail    |────│ Backend Go  │────│ NNTP Server │
-│ (PHP Web)   │    │ Sendmail+alias     │ (m2usenet)  │    │  (.onion)   │
-└─────────────┘    └────────────--─┘    └─────────────┘    └─────────────┘
+📱 Web Interface (Only Mode):
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│ Frontend    │────│ Local Mail  │────│ Backend Go  │────│ External    │────│ NNTP Server │
+│ (PHP Web)   │    │ (sendmail   │    │ (m2usenet)  │    │ Gateway     │    │  (.onion)   │
+│             │    │  + alias)   │    │ +X-headers  │    │ (tcpreset)  │    │             │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
 ```
+
+**Flow:** Web UI → Local sendmail → m2usenet preprocessor → External mail2news gateway → Usenet
 
 ## 🔐 Security Features
 
