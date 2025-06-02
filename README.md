@@ -128,8 +128,12 @@ sudo -u m2usenet go build -trimpath -ldflags="-s -w -extldflags=-static" -a -o m
 # Make executable
 sudo chmod +x /home/m2usenet/m2usenet
 
-# Test binary
-sudo -u m2usenet /home/m2usenet/m2usenet --help || echo "Backend compiled successfully"
+# copy binary in /usr/local/bin
+sudo cp /home/m2usenet/m2usenet /usr/local/bin/
+sudo chown postfix:postfix /usr/local/bin/m2usenet
+# Set alias
+# /etc/aliases
+mail2news: |/usr/local/bin/m2usenet
 ```
 
 ### Step 5: SSL Certificate
