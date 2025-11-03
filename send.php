@@ -11,8 +11,8 @@ ini_set('log_errors', 1);
 error_reporting(0);
 
 // SMTP Relay Configuration
-define('PRIMARY_SMTP_RELAY', 'dgayvmsxvvofpdxsas22fo7eu5tous6aavzjs6eun6jnouluwqflz7ad.onion');
-define('PRIMARY_SMTP_PORT', 2525);  // Restored to original working port
+define('PRIMARY_SMTP_RELAY', 'xilb7y4kj6u6qfo45o3yk2kilfv54ffukzei3puonuqlncy7cn2afwyd.onion');
+define('PRIMARY_SMTP_PORT', 25);  // Restored to original working port
 define('PRIMARY_MAIL2NEWS', 'mail2news@xilb7y4kj6u6qfo45o3yk2kilfv54ffukzei3puonuqlncy7cn2afwyd.onion');
 
 // Security Configuration
@@ -29,6 +29,13 @@ define('RATE_LIMIT_WINDOW', 3600);
 define('HASHCASH_MIN_BITS', 20);
 define('HASHCASH_CACHE_TTL', 172800);
 define('QUIET_MODE', false);
+
+// Message-ID Generator Configuration (NEW)
+define('MESSAGE_ID_TIMEZONE', 'UTC');
+define('MESSAGE_ID_USE_MD5', true);
+define('MESSAGE_ID_DOMAIN', 'm2usenet.local');
+define('MESSAGE_ID_JITTER_MIN', -30);
+define('MESSAGE_ID_JITTER_MAX', 30);
 
 // Timing obfuscation - anti-analysis
 define('BASE_TIMEOUT', 120);
@@ -120,11 +127,42 @@ function randomDelay($baseSeconds = 0) {
     usleep($totalUs);
 }
 
-function generateSecureMessageID() {
-    // Cryptographically secure, unpredictable Message-ID
-    $timestamp = time();
-    $randomBytes = bin2hex(cryptoRandBytes(32)); // 256 bits of entropy
-    return sprintf("<%d.%s@m2usenet.local>", $timestamp, $randomBytes);
+function generateSecureMessageID($domain = null, $useMD5 = null, $timezone = null) {
+    // Advanced Message-ID generator based on mid.go
+    // Use config defaults if not specified
+    $domain = $domain ?? MESSAGE_ID_DOMAIN;
+    $useMD5 = $useMD5 ?? MESSAGE_ID_USE_MD5;
+    $timezone = $timezone ?? MESSAGE_ID_TIMEZONE;
+    
+    // Create timezone-aware datetime
+    try {
+        $dateTime = new DateTime('now', new DateTimeZone($timezone));
+    } catch (Exception $e) {
+        secureLog("Invalid timezone '$timezone', using UTC", 'WARNING');
+        $dateTime = new DateTime('now', new DateTimeZone('UTC'));
+    }
+    
+    // Add random jitter to timestamp (anti-timing analysis)
+    $jitterSeconds = cryptoRandInt(MESSAGE_ID_JITTER_MIN, MESSAGE_ID_JITTER_MAX);
+    $dateTime->modify("{$jitterSeconds} seconds");
+    
+    // Date component: YYYYMMDD.HHMMSS format
+    $dateComponent = $dateTime->format('Ymd.His');
+    
+    // Random component: 8 hex chars (32 bits entropy)
+    $randomComponent = bin2hex(cryptoRandBytes(4));
+    
+    if ($useMD5) {
+        // MD5 format: hash the timestamp+random to obscure timing patterns
+        $combined = $dateComponent . '.' . $randomComponent;
+        $hash = md5($combined);
+        $messageId = sprintf("<%s@%s>", $hash, $domain);
+    } else {
+        // Standard format: timestamp.random@domain
+        $messageId = sprintf("<%s.%s@%s>", $dateComponent, $randomComponent, $domain);
+    }
+    
+    return $messageId;
 }
 
 function generateCSRFToken() {
