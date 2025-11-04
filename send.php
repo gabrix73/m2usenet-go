@@ -1,6 +1,6 @@
 <?php
 // /var/www/m2usenet/send.php
-// m2usenet Gateway Handler v3.0.0 - PHP Native SOCKS5 Implementation
+// m2usenet Gateway Handler v3.1.0 - PHP Native SOCKS5 + Random Fog Sphinx Relay Selection
 // Maximum security: no external dependencies, constant-time operations, anti-analysis
 // Security-hardened implementation with all threat mitigations
 
@@ -10,10 +10,33 @@ ini_set('display_startup_errors', 0);
 ini_set('log_errors', 1);
 error_reporting(0);
 
-// SMTP Relay Configuration
-define('PRIMARY_SMTP_RELAY', 'xilb7y4kj6u6qfo45o3yk2kilfv54ffukzei3puonuqlncy7cn2afwyd.onion');
-define('PRIMARY_SMTP_PORT', 25);  // Restored to original working port
-define('PRIMARY_MAIL2NEWS', 'mail2news@xilb7y4kj6u6qfo45o3yk2kilfv54ffukzei3puonuqlncy7cn2afwyd.onion');
+// SMTP Relay Configuration - Fog Sphinx Network (Random Selection)
+define('FOG_SPHINX_RELAYS', [
+    [
+        'host' => 'dgayvmsxvvofpdxsas22fo7eu5tous6aavzjs6eun6jnouluwqflz7ad.onion',
+        'port' => 2525,
+        'mail2news' => 'mail2news@xilb7y4kj6u6qfo45o3yk2kilfv54ffukzei3puonuqlncy7cn2afwyd.onion',
+        'name' => 'news'
+    ],
+    [
+        'host' => 'iycr4wfrdzieogdfeo7uxrj77w2vjlrhlrv3jg2ve62oe5aceqsqu7ad.onion',
+        'port' => 2525,
+        'mail2news' => 'mail2news@xilb7y4kj6u6qfo45o3yk2kilfv54ffukzei3puonuqlncy7cn2afwyd.onion',
+        'name' => 'mail'
+    ],
+    [
+        'host' => 'ztavxfthfr2fgovxzfg3sudl2ajtbo6db4iw5cx37nzr5jc6q7ma6ryd.onion',
+        'port' => 2525,
+        'mail2news' => 'mail2news@xilb7y4kj6u6qfo45o3yk2kilfv54ffukzei3puonuqlncy7cn2afwyd.onion',
+        'name' => 'kvara'
+    ],
+    [
+        'host' => 'hqahdugpxz7jrmsfxqav5nfl452cvc5rsdhcpyixvcbcpfsopwnznlqd.onion',
+        'port' => 2525,
+        'mail2news' => 'mail2news@xilb7y4kj6u6qfo45o3yk2kilfv54ffukzei3puonuqlncy7cn2afwyd.onion',
+        'name' => 'mct8'
+    ]
+]);
 
 // Security Configuration
 define('LOG_FILE', '/var/log/m2usenet/send.log');
@@ -100,6 +123,16 @@ function cryptoRandInt($min, $max) {
         secureLog("CRITICAL: random_int failed", 'CRITICAL');
         return $min;
     }
+}
+
+function selectRandomRelay() {
+    // Cryptographically secure random relay selection
+    $relays = FOG_SPHINX_RELAYS;
+    $index = cryptoRandInt(0, count($relays) - 1);
+    
+    secureLog("Selected Fog Sphinx relay: " . $relays[$index]['name']);
+    
+    return $relays[$index];
 }
 
 function constantTimeCompare($a, $b) {
@@ -684,7 +717,7 @@ function sendViaNativePHPSMTP($data, $smtpRelay, $smtpPort, $mail2newsAddress) {
         $headers[] = "MIME-Version: 1.0";
         $headers[] = "Content-Type: text/plain; charset=utf-8";
         $headers[] = "Content-Transfer-Encoding: 8bit";
-        $headers[] = "User-Agent: m2usenet-web v3.0.0";
+        $headers[] = "User-Agent: m2usenet-web v3.1.0";
         $headers[] = "X-No-Archive: Yes";
         
         $body = addAdaptivePadding($data['message']);
@@ -727,19 +760,69 @@ function sendViaNativePHPSMTP($data, $smtpRelay, $smtpPort, $mail2newsAddress) {
 }
 
 function sendMessage($data) {
-    $result = sendViaNativePHPSMTP($data, PRIMARY_SMTP_RELAY, PRIMARY_SMTP_PORT, PRIMARY_MAIL2NEWS);
+    // Select random relay
+    $relay = selectRandomRelay();
     
-    // Retry logic with exponential backoff
+    secureLog("Attempting delivery via {$relay['name']} relay");
+    
+    $result = sendViaNativePHPSMTP(
+        $data, 
+        $relay['host'], 
+        $relay['port'], 
+        $relay['mail2news']
+    );
+    
+    // Retry logic with different relays on failure
     $retries = 0;
+    $triedRelays = [$relay['name']];
+    
     while (!$result['success'] && $retries < MAX_RETRIES) {
         $retries++;
-        $backoff = RETRY_DELAY_BASE * pow(2, $retries - 1);
-        $backoff += cryptoRandInt(0, 2); // Add jitter
         
-        secureLog("Retry $retries/" . MAX_RETRIES . " after {$backoff}s", 'WARNING');
-        sleep($backoff);
+        // Get different relay
+        $availableRelays = array_filter(FOG_SPHINX_RELAYS, function($r) use ($triedRelays) {
+            return !in_array($r['name'], $triedRelays);
+        });
         
-        $result = sendViaNativePHPSMTP($data, PRIMARY_SMTP_RELAY, PRIMARY_SMTP_PORT, PRIMARY_MAIL2NEWS);
+        if (empty($availableRelays)) {
+            // All relays tried, do exponential backoff with same relay
+            $backoff = RETRY_DELAY_BASE * pow(2, $retries - 1);
+            $backoff += cryptoRandInt(0, 2);
+            
+            secureLog("All relays exhausted. Retry $retries/" . MAX_RETRIES . " with {$relay['name']} after {$backoff}s", 'WARNING');
+            sleep($backoff);
+            
+            $result = sendViaNativePHPSMTP(
+                $data, 
+                $relay['host'], 
+                $relay['port'], 
+                $relay['mail2news']
+            );
+        } else {
+            // Try different relay
+            $availableRelays = array_values($availableRelays);
+            $index = cryptoRandInt(0, count($availableRelays) - 1);
+            $relay = $availableRelays[$index];
+            $triedRelays[] = $relay['name'];
+            
+            $backoff = cryptoRandInt(1, 3); // Shorter delay when switching relays
+            
+            secureLog("Switching to {$relay['name']} relay. Retry $retries/" . MAX_RETRIES . " after {$backoff}s", 'WARNING');
+            sleep($backoff);
+            
+            $result = sendViaNativePHPSMTP(
+                $data, 
+                $relay['host'], 
+                $relay['port'], 
+                $relay['mail2news']
+            );
+        }
+    }
+    
+    if ($result['success']) {
+        secureLog("Message delivered successfully via {$relay['name']} relay");
+    } else {
+        secureLog("Message delivery failed after trying relays: " . implode(', ', $triedRelays), 'ERROR');
     }
     
     return $result;
@@ -811,6 +894,7 @@ function successResponse($messageId, $gateway) {
             <div class="info">
                 <p><strong>Gateway:</strong> <?php echo htmlspecialchars($gateway); ?></p>
                 <p><small>Message routed via secure Tor SOCKS5 with PHP native implementation</small></p>
+                <p><small>Using Fog Sphinx mixnet with random relay selection</small></p>
             </div>
             <p><a href="index.php">Send another message</a></p>
         </div>
