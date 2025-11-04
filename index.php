@@ -532,13 +532,23 @@ $csrfToken = $_SESSION['csrf_token'];
         <h4>🔐 Full Onion Network Path</h4>
         <p style="margin-bottom: 15px; font-size: 0.95em;">Your message travels entirely within the Tor network through these three components:</p>
 
-        <div class="gateway-item">
-          <span class="gateway-priority">Step 1</span>
-          <div style="flex: 1;">
-            <strong>SMTP Relay: <a href="https://github.com/gabrix73/pluto2" target="_blank" style="color: #007bff; text-decoration: none;">Pluto2</a></strong>
-            <p style="font-size: 0.85em; margin: 5px 0 0 0; color: #666;">Specialized SMTP relay operating exclusively over Tor, providing robust protection against traffic analysis, timing attacks, and metadata correlation.</p>
-          </div>
-        </div>
+      <div class="info-section" style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+         <strong>SMTP Relay: <a href="https://github.com/gabrix73/fog" target="_blank" style="color: #007bff; text-decoration: none;">Fog Sphinx Mixnet (v1.3.3)</a></strong>
+         <p style="font-size: 0.85em; margin: 8px 0 0 0; color: #666; line-height: 1.5;">
+          Random selection from 4-node mixnet operating exclusively over Tor. 
+          Each message routes through 3-6 hops with AES-256-GCM encryption, forward secrecy, 
+          and automatic failover for maximum reliability and anonymity.
+      </p>
+    <details style="margin-top: 8px; font-size: 0.8em;">
+    <summary style="cursor: pointer; color: #007bff;">Show relay nodes</summary>
+    <ul style="margin: 8px 0; padding-left: 20px; font-family: monospace; color: #555;">
+      <li>dgayvmsxvvofpdxsas22fo7eu5tous6aavzjs6eun6jnouluwqflz7ad.onion:2525</li>
+      <li>iycr4wfrdzieogdfeo7uxrj77w2vjlrhlrv3jg2ve62oe5aceqsqu7ad.onion:2525</li>
+      <li>ztavxfthfr2fgovxzfg3sudl2ajtbo6db4iw5cx37nzr5jc6q7ma6ryd.onion:2525</li>
+      <li>hqahdugpxz7jrmsfxqav5nfl452cvc5rsdhcpyixvcbcpfsopwnznlqd.onion:2525</li>
+    </ul>
+  </details>
+</div>
 
         <div class="gateway-item">
           <span class="gateway-priority">Step 2</span>
