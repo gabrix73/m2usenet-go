@@ -1,4 +1,4 @@
-# m2usenet v1.0.0 and mail2news v0.9.4
+# m2usenet and mail2news
 
 **Privacy-focused Usenet posting system with authentication preprocessing**
 
