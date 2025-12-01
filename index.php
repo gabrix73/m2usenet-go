@@ -241,6 +241,15 @@ $csrfToken = $_SESSION['csrf_token'];
       border: 2px solid #999;
     }
 
+    input.prefilled {
+      background: #e8f5e9;
+      border: 2px solid var(--primary);
+    }
+
+    .dark-theme input.prefilled {
+      background: #1b3d1b;
+    }
+
     button {
       margin-top: 15px;
       padding: 12px 20px;
@@ -332,6 +341,39 @@ $csrfToken = $_SESSION['csrf_token'];
       font-size: 0.85em;
     }
 
+    .prefill-banner {
+      background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+      color: white;
+      padding: 12px 15px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+    }
+
+    .prefill-banner.reply {
+      background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    }
+
+    .prefill-banner-icon {
+      font-size: 1.5em;
+    }
+
+    .prefill-banner-text {
+      flex: 1;
+    }
+
+    .prefill-banner-text strong {
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .prefill-banner-text small {
+      opacity: 0.9;
+    }
+
     footer {
       text-align: center;
       margin-top: 40px;
@@ -382,6 +424,15 @@ $csrfToken = $_SESSION['csrf_token'];
       <span>🌙</span>
     </div>
   </header>
+
+  <!-- Prefill banner - shown when coming from onion-newsreader -->
+  <div id="prefillBanner" class="prefill-banner" style="display: none;">
+    <span class="prefill-banner-icon">📝</span>
+    <div class="prefill-banner-text">
+      <strong id="prefillTitle">New Post</strong>
+      <small id="prefillDetails">Fields pre-filled from Onion Newsreader</small>
+    </div>
+  </div>
 
   <div class="tabs">
     <button id="tabBtn1" onclick="showTab('pow')">
@@ -542,7 +593,8 @@ function showNotification(message, type, duration) {
 const appState = {
   step1Complete: false,
   step2Complete: false,
-  step3Complete: false
+  step3Complete: false,
+  prefillMode: null
 };
 
 function updateTabIndicators() {
@@ -604,8 +656,6 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   showNotification('m2usenet Gateway v2.1 ready', 'success', 3000);
-  
-  // CRITICAL: Assicura che solo il primo tab sia visibile
   showTab('pow');
 });
 
@@ -1076,77 +1126,145 @@ document.getElementById('fromName').addEventListener('input', function() {
 });
 
 // ============================================================================
-// NEWSREADER INTEGRATION
+// ONION-NEWSREADER INTEGRATION (localStorage + URL params) - FIXED v2
 // ============================================================================
 
 (function() {
-    const u = new URLSearchParams(window.location.search);
-    const a = u.get('action');
-    if (!a) return;
+  // Helper function to decode URL-encoded values
+  function decode(s) {
+    if (!s) return '';
+    try {
+      // Replace + with space, then decode URI components
+      return decodeURIComponent(s.replace(/\+/g, ' '));
+    } catch(e) {
+      console.error('[PREFILL] Decode error:', e);
+      return s;
+    }
+  }
 
-    function fill(id, v, readonly) {
-        readonly = readonly || false;
-        const f = document.getElementById(id);
-        if (f && v) {
-            f.value = decodeURIComponent(v);
-            if (readonly) {
-                f.readOnly = true;
-                f.style.background = '#e8e8e8';
-                f.style.border = '2px solid #999';
-                f.style.cursor = 'not-allowed';
-            }
-        }
+  // Helper function to fill and optionally style a field
+  function fillField(id, value, highlight) {
+    highlight = highlight !== false;
+    const field = document.getElementById(id);
+    if (field && value) {
+      field.value = value;
+      if (highlight) {
+        field.classList.add('prefilled');
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // Show the prefill banner
+  function showPrefillBanner(isReply, details) {
+    const banner = document.getElementById('prefillBanner');
+    const title = document.getElementById('prefillTitle');
+    const detailsEl = document.getElementById('prefillDetails');
+    
+    if (banner) {
+      banner.style.display = 'flex';
+      if (isReply) {
+        banner.classList.add('reply');
+        title.textContent = '💬 Reply Mode';
+      } else {
+        title.textContent = '📝 New Post';
+      }
+      detailsEl.textContent = details;
+    }
+  }
+
+  let prefillData = null;
+  let prefillSource = null;
+
+  // 1. Try localStorage first (from onion-newsreader)
+  try {
+    const storedData = localStorage.getItem('m2usenet_prefill');
+    if (storedData) {
+      prefillData = JSON.parse(storedData);
+      prefillSource = 'localStorage';
+      // Clear after reading
+      localStorage.removeItem('m2usenet_prefill');
+      console.log('[PREFILL] Raw data from localStorage:', prefillData);
+      
+      // Decode values in case they were stored encoded
+      if (prefillData.newsgroups) prefillData.newsgroups = decode(prefillData.newsgroups);
+      if (prefillData.subject) prefillData.subject = decode(prefillData.subject);
+      if (prefillData.references) prefillData.references = decode(prefillData.references);
+      
+      console.log('[PREFILL] Decoded data from localStorage:', prefillData);
+    }
+  } catch (e) {
+    console.error('[PREFILL] localStorage error:', e);
+    localStorage.removeItem('m2usenet_prefill');
+  }
+
+  // 2. Fallback to URL query parameters
+  if (!prefillData) {
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    
+    if (action === 'new' || action === 'reply' || params.has('newsgroups')) {
+      // Get raw values and decode them explicitly
+      const rawNG = params.get('newsgroups') || '';
+      const rawSubj = params.get('subject') || '';
+      const rawRefs = params.get('references') || '';
+      
+      console.log('[PREFILL] Raw URL params:', { rawNG, rawSubj, rawRefs });
+      
+      prefillData = {
+        newsgroups: decode(rawNG),
+        subject: decode(rawSubj),
+        references: decode(rawRefs)
+      };
+      prefillSource = 'URL';
+      console.log('[PREFILL] Decoded data from URL:', prefillData);
+    }
+  }
+
+  // 3. Apply prefill data if available
+  if (prefillData) {
+    let filledFields = [];
+    
+    // Fill newsgroups
+    if (prefillData.newsgroups) {
+      fillField('newsgroups', prefillData.newsgroups);
+      filledFields.push('Newsgroups');
+    }
+    
+    // Fill subject
+    if (prefillData.subject) {
+      fillField('subject', prefillData.subject);
+      filledFields.push('Subject');
+    }
+    
+    // Fill references (for replies)
+    if (prefillData.references) {
+      fillField('references', prefillData.references);
+      filledFields.push('References');
     }
 
-    if (a === 'new') {
-        const ng = u.get('newsgroups');
-        if (ng) {
-            fill('newsgroups', ng, true);
-            if (typeof showNotification === 'function') {
-                showNotification('📝 NEW POST: ' + decodeURIComponent(ng), 'success');
-            }
-        }
-        setTimeout(() => showTab('pow'), 500);
+    // Determine if this is a reply or new post
+    const isReply = !!(prefillData.references || 
+                       (prefillData.subject && prefillData.subject.toLowerCase().startsWith('re:')));
+
+    // Show banner and notification
+    if (filledFields.length > 0) {
+      const details = `Pre-filled: ${filledFields.join(', ')} (from ${prefillSource})`;
+      showPrefillBanner(isReply, details);
+      
+      if (isReply) {
+        showNotification(`💬 Reply mode: ${prefillData.newsgroups}`, 'info', 5000);
+      } else {
+        showNotification(`📝 New post to: ${prefillData.newsgroups}`, 'success', 5000);
+      }
+      
+      console.log(`[PREFILL] Applied ${filledFields.length} fields from ${prefillSource}`);
     }
 
-    if (a === 'reply') {
-        const ng = u.get('newsgroups');
-        const subj = u.get('subject');
-        const refs = u.get('references');
-        const qbody = u.get('quoted-body');
-
-        if (ng) fill('newsgroups', ng, true);
-        if (subj) fill('subject', subj, true);
-        if (refs) fill('references', refs, true);
-
-        if (qbody) {
-            const origFrom = u.get('original-from');
-            const origDate = u.get('original-date');
-
-            let quotedText = '';
-            if (origFrom && origDate) {
-                quotedText = 'On ' + decodeURIComponent(origDate) + ', ' + decodeURIComponent(origFrom) + ' wrote:\n\n';
-            }
-
-            const bodyLines = decodeURIComponent(qbody).split('\n');
-            for (let i = 0; i < bodyLines.length; i++) {
-                quotedText += '> ' + bodyLines[i] + '\n';
-            }
-
-            quotedText += '\n\n';
-
-            const msgField = document.getElementById('messageToSign');
-            if (msgField) {
-                msgField.value = quotedText;
-            }
-        }
-
-        if (typeof showNotification === 'function') {
-            showNotification('💬 REPLY: Metadata locked', 'info');
-        }
-
-        setTimeout(() => showTab('pow'), 500);
-    }
+    // Start at first tab (PoW generation)
+    setTimeout(() => showTab('pow'), 300);
+  }
 })();
 </script>
 
